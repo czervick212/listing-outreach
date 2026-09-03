@@ -4,8 +4,7 @@
 For a tenant already operating near the listing, decide: too close (skip), or far enough / wrong
 format (pitch a RELOCATION). The naive "within N miles -> cannibalization -> skip" rule is wrong
 often enough to matter, because a barrier (an interstate, a river) — not raw mileage — is what
-separates trade areas. This scripts the test I did by hand on the Westview run ("which side of
-I-270 is their store on?").
+separates trade areas. It scripts the "which side of the interstate is their store on?" test.
 
     python classify_proximity.py "<site address>" --brands "Chipotle,Panera,Wendy's" \\
         [--barrier "I 270"] [--radius-mi 3]
