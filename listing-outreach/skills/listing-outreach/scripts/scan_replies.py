@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """Find replies to an outreach batch and split them per tenant.
 
-Reads the local Apple Mail store (.emlx) — never the Outlook MCP, which is unusable
-headlessly. Matches each reply against data/send-manifest.json on (sender address +
-subject), which for mail WE sent is a deterministic key back to the exact tenant set.
+Matches each reply against ~/.listing-outreach/send-manifest.json on (sender address + subject),
+which for mail WE sent is a deterministic key back to the exact tenant set — so a reply covering
+several tenants ("no for three, yes for one") becomes one row per tenant in reply-queue.json,
+each with an `outcome` field to classify before writing to VTS.
 
-Emits data/reply-queue.json: one entry per (thread, tenant) with the reply text, so a
-downstream pass can classify each tenant separately. A single "no for three, yes for
-one" reply becomes four rows.
+    python scan_replies.py                 # replies in the last 30 days
+    python scan_replies.py --days 14
+    python scan_replies.py --show          # print the queue, write nothing
 
-    python3 scan_replies.py                 # replies since the manifest was built
-    python3 scan_replies.py --days 14
-    python3 scan_replies.py --show          # print the queue, write nothing
+macOS  -> reads the local Apple Mail .emlx store (never the Outlook MCP — unusable headlessly).
+Windows-> reads the Outlook Inbox via COM (pywin32), classic Outlook desktop.
 """
-import json, sys, os, re, email, email.utils, datetime, subprocess, glob
+import json
+import sys
+import os
+import re
+import datetime
+import platform
 
 BASE = os.path.join(os.path.expanduser("~"), ".listing-outreach")
 MANIFEST = f"{BASE}/send-manifest.json"
 QUEUE = f"{BASE}/reply-queue.json"
-MAILROOT = os.path.expanduser("~/Library/Mail")
+IS_WIN = platform.system() == "Windows"
 
 DAYS = 30
 if "--days" in sys.argv:
@@ -26,12 +31,13 @@ if "--days" in sys.argv:
 SHOW_ONLY = "--show" in sys.argv
 
 man = json.load(open(MANIFEST))
-# recipient address -> the send record (its tenant list is what a reply must be split across)
 by_addr = {s["to"].lower(): s for s in man["sends"]}
+
+
 def norm_subj(s):
     return re.sub(r"^((re|fwd|fw):\s*)+", "", s or "", flags=re.I).strip().lower()
 
-# each send carries its own subject — match per-send, not against one global key
+
 subject_by_addr = {s["to"].lower(): norm_subj(s["subject"]) for s in man["sends"]}
 
 if SHOW_ONLY and os.path.exists(QUEUE):
@@ -40,34 +46,6 @@ if SHOW_ONLY and os.path.exists(QUEUE):
         print(f"[{r['outcome'] or 'unclassified':<12}] {r['tenant']:<34} {r['from']}")
     print(f"\n{len(q['rows'])} row(s) from {len(set(x['thread'] for x in q['rows']))} thread(s)")
     raise SystemExit
-
-cutoff = datetime.datetime.now() - datetime.timedelta(days=DAYS)
-
-# Only scan recently-modified .emlx — the archive is ~67k files and a full walk is slow.
-found = subprocess.run(
-    ["find", MAILROOT, "-name", "*.emlx", "-mtime", f"-{DAYS}"],
-    capture_output=True, text=True).stdout.split("\n")
-files = [f for f in found if f.strip()]
-print(f"scanning {len(files)} recent message file(s) against {len(by_addr)} recipient(s)")
-
-
-def parse(path):
-    try:
-        raw = open(path, "rb").read()
-        raw = raw[raw.find(b"\n") + 1:]          # .emlx starts with a byte-count line
-        return email.message_from_bytes(raw)
-    except Exception:
-        return None
-
-
-def body_of(msg):
-    for part in msg.walk():
-        if part.get_content_type() == "text/plain":
-            try:
-                return part.get_payload(decode=True).decode("utf-8", "ignore")
-            except Exception:
-                pass
-    return ""
 
 
 def strip_quoted(t):
@@ -78,49 +56,94 @@ def strip_quoted(t):
     return t.strip()
 
 
+# --------------------------------------------------------- gather (mac .emlx | win Outlook COM)
+def gather_mac():
+    import email
+    import email.utils
+    import subprocess
+    root = os.path.expanduser("~/Library/Mail")
+    found = subprocess.run(["find", root, "-name", "*.emlx", "-mtime", f"-{DAYS}"],
+                           capture_output=True, text=True).stdout.split("\n")
+    msgs = []
+    for path in (f for f in found if f.strip()):
+        try:
+            raw = open(path, "rb").read()
+            raw = raw[raw.find(b"\n") + 1:]                 # .emlx starts with a byte-count line
+            m = email.message_from_bytes(raw)
+        except Exception:
+            continue
+        body = ""
+        for part in m.walk():
+            if part.get_content_type() == "text/plain":
+                try:
+                    body = part.get_payload(decode=True).decode("utf-8", "ignore")
+                    break
+                except Exception:
+                    pass
+        msgs.append({"frm": email.utils.parseaddr(m.get("From") or "")[1].lower(),
+                     "subj": m.get("Subject") or "", "body": body,
+                     "date": m.get("Date") or "", "mid": m.get("Message-ID") or path})
+    return msgs
+
+
+def gather_win():
+    import win32com.client
+    ns = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    inbox = ns.GetDefaultFolder(6)  # olFolderInbox
+    items = inbox.Items
+    items.Sort("[ReceivedTime]", True)
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=DAYS)
+    msgs = []
+    for it in items:
+        try:
+            rt = it.ReceivedTime
+            if datetime.datetime(rt.year, rt.month, rt.day) < cutoff:
+                break
+            # resolve the sender's SMTP address (Exchange senders need PropertyAccessor)
+            frm = ""
+            try:
+                frm = (it.SenderEmailAddress or "").lower()
+                if frm.startswith("/o="):               # Exchange DN, not SMTP
+                    frm = (it.Sender.GetExchangeUser().PrimarySmtpAddress or "").lower()
+            except Exception:
+                pass
+            msgs.append({"frm": frm, "subj": it.Subject or "", "body": it.Body or "",
+                         "date": str(it.ReceivedTime),
+                         "mid": getattr(it, "EntryID", None) or f"{it.Subject}:{it.ReceivedTime}"})
+        except Exception:
+            continue
+    return msgs
+
+
+print(f"scanning ({'Outlook COM' if IS_WIN else 'Apple Mail .emlx'}) "
+      f"against {len(by_addr)} recipient(s)")
+messages = gather_win() if IS_WIN else gather_mac()
+
 rows, seen = [], set()
-for path in files:
-    msg = parse(path)
-    if not msg:
-        continue
-    subj = (msg.get("Subject") or "").strip()
-    norm = norm_subj(subj)
-    frm = email.utils.parseaddr(msg.get("From") or "")[1].lower()
+for msg in messages:
+    frm = msg["frm"]
     send = by_addr.get(frm)
     if not send:
         continue                                   # not one of our recipients
     want = subject_by_addr.get(frm, "")
-    if want and want not in norm:
+    if want and want not in norm_subj(msg["subj"]):
         continue                                   # right person, different thread
-    mid = msg.get("Message-ID") or path
-    if mid in seen:
+    if msg["mid"] in seen:
         continue
-    seen.add(mid)
-    text = strip_quoted(body_of(msg))
+    seen.add(msg["mid"])
+    text = strip_quoted(msg["body"])
     if not text:
         continue
-    dt = msg.get("Date") or ""
     for t in send["tenants"]:
         rows.append({
-            "thread": mid,
-            "from": frm,
-            "contact": send["contact"],
-            "firm": send["firm"],
-            "date": dt,
-            "tenant": t["tenant"],
-            "vts_deal_id": t.get("vts_deal_id"),
-            "reply_text": text[:1500],
-            "covers": [x["tenant"] for x in send["tenants"]],
-            "outcome": None,        # yes | no | later  -- set by the classify pass
-            "vts_comment": None,    # drafted comment text, reviewed before posting
-            "posted": False,
+            "thread": msg["mid"], "from": frm, "contact": send["contact"], "firm": send["firm"],
+            "date": msg["date"], "tenant": t["tenant"], "vts_deal_id": t.get("vts_deal_id"),
+            "reply_text": text[:1500], "covers": [x["tenant"] for x in send["tenants"]],
+            "outcome": None, "vts_comment": None, "posted": False,
         })
 
-out = {
-    "built": datetime.datetime.now().isoformat(timespec="seconds"),
-    "vts_property_id": man["vts_property_id"],
-    "rows": rows,
-}
+out = {"built": datetime.datetime.now().isoformat(timespec="seconds"),
+       "vts_property_id": man["vts_property_id"], "rows": rows}
 if rows:
     json.dump(out, open(QUEUE, "w"), indent=1)
 
@@ -129,7 +152,4 @@ print(f"{threads} reply thread(s) -> {len(rows)} (thread, tenant) row(s)")
 for r in rows:
     flag = "  [SPLIT]" if len(r["covers"]) > 1 else ""
     print(f"  {r['contact'] or r['from']:<18} {r['tenant']:<34}{flag}")
-if rows:
-    print(f"\nwrote {QUEUE} — classify each row, then post to VTS on approval")
-else:
-    print("no replies yet")
+print(f"\nwrote {QUEUE} — classify each row, then post to VTS on approval" if rows else "no replies yet")

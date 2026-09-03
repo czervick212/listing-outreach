@@ -1,7 +1,7 @@
 {
   "name": "listing-outreach",
   "displayName": "Listing Outreach",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "New listing? Blast it to the whole market. Claude builds the target list from a comparable VTS pipeline, writes one email per broker with the flyer attached for you to review and send, and logs every submittal back into VTS.",
   "author": {
     "name": "Leasing Tools"

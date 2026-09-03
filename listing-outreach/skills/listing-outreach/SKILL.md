@@ -1,6 +1,6 @@
 ---
 name: listing-outreach
-description: Blast a new retail listing to maximum coverage — build a vetted tenant/broker target list, write one personalized email per broker with the flyer attached, open them as reviewable Mail.app windows, and log every send back to VTS as "Submitted site." Use when the user picks up a new listing and wants full market coverage, says "blast this listing", "who should we send this to", "run outreach on <property>", "canvass the market for <site>", "maximum coverage on the new listing", or hands over a flyer and asks who to pitch. Also use to refresh outreach on an existing listing.
+description: Blast a new retail listing to maximum coverage — build a vetted tenant/broker target list, write one personalized email per broker with the flyer attached, open them as reviewable compose windows (Mail.app on macOS, Outlook on Windows), and log every send back to VTS as "Submitted site." Use when the user picks up a new listing and wants full market coverage, says "blast this listing", "who should we send this to", "run outreach on <property>", "canvass the market for <site>", "maximum coverage on the new listing", or hands over a flyer and asks who to pitch. Also use to refresh outreach on an existing listing.
 ---
 
 # New Listing Outreach
@@ -112,19 +112,22 @@ from · Notes. The scripts find columns by these header names, so keep them.
 
 ## Step 8 — Open the emails with the flyer attached
 
-`mailto:` **cannot carry an attachment** — that's the protocol. Script Mail.app instead:
+`mailto:` **cannot carry an attachment** — that's the protocol. So the client is scripted
+directly (macOS → Mail.app; Windows → classic Outlook via COM, see `references/windows.md`):
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/make_drafts.py" <targets.xlsx> <flyer.pdf>
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/make_drafts.py" <targets.xlsx> <flyer.pdf> 0 10   # a batch
 ```
 
-Opens each as a **visible compose window** — reviewed, then sent by hand; nothing is saved or
-sent. AppleScript gotchas: `POSIX file … as alias` (bare `file:` → -1701); the flyer can't live
-in the Mail container; Drafts is nested under the account, not top-level. The From: address
-comes from config. After sending, `cleanup_drafts.py "<subject fragment>"` clears any leftover
-drafts (it saves open windows first, then deletes by subject+date — Mail throttles scripted
-deletes, so if it stalls, do it by hand: Drafts → search → ⌘A → Delete).
+(`python3` on macOS/Linux, `python` on Windows.) Opens each as a **visible compose window** —
+reviewed, then sent by hand; nothing is saved or sent. The From: address comes from config; the
+signature is whatever the client applies. The cross-platform mechanics live in `lib/lo_mail.py`
+(macOS AppleScript gotchas: `POSIX file … as alias`, flyer can't sit in the Mail container,
+Drafts nested under the account; Windows: classic Outlook only, New Outlook has no COM). After
+sending, `cleanup_drafts.py "<subject fragment>"` clears leftover drafts (macOS saves open
+windows first, then deletes by subject+date — Mail throttles scripted deletes, so if it stalls,
+do it by hand: Drafts → search → select all → Delete).
 
 ## Step 9 — Log every send back to VTS
 

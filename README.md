@@ -52,8 +52,8 @@ the plugin isn't loaded into this session yet:
 
 ## Requirements
 
-- **macOS** for the email half (drives Mail.app and Chrome). The VTS-write half is
-  cross-platform.
+- **macOS or Windows** for the email half — Mail.app on macOS, classic Outlook (via COM/pywin32)
+  on Windows. New Outlook has no COM; use classic. The VTS-write half is cross-platform.
 - **Claude Code** with the Claude-in-Chrome extension, signed in to VTS **in Chrome**.
 - **Python 3** with `openpyxl` (setup installs it).
 - An enrichment tool (e.g. Lusha) is optional but helps fill contact gaps.

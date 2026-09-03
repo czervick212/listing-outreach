@@ -23,11 +23,13 @@ The scripts need `openpyxl`. Check and install:
 
 ```bash
 python3 -c "import openpyxl" 2>/dev/null && echo ok || python3 -m pip install --user openpyxl
+# Windows: python -m pip install --user openpyxl pywin32
 ```
 
-macOS only — the Mail-scripting and Chrome-driving parts are macOS-specific. If the user is on
-Windows, say so plainly: the VTS-write half works cross-platform, but drafting emails through
-Mail.app does not.
+Cross-platform. On **Windows** also install `pywin32` (provides Outlook COM) — the command
+above becomes `python -m pip install --user openpyxl pywin32`, and the user needs **classic
+Outlook** (New Outlook has no COM). On **macOS** the email half drives Mail.app and needs no
+extra dependency. The VTS-write half (Chrome) works everywhere. See `references/windows.md`.
 
 ## Step 2 — Identity
 
