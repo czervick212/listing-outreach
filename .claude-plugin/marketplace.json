@@ -1,0 +1,22 @@
+{
+  "name": "outreach-tools",
+  "owner": {
+    "name": "Leasing Tools"
+  },
+  "description": "Outreach and prospecting tools for commercial real estate leasing.",
+  "plugins": [
+    {
+      "name": "listing-outreach",
+      "source": "./listing-outreach",
+      "description": "New listing? Blast it to the whole market in one pass. Claude builds the target list from your VTS pipeline, drafts one email per broker with the flyer attached for you to review and send, then logs every submittal back into VTS.",
+      "category": "cre",
+      "tags": [
+        "leasing",
+        "prospecting",
+        "outreach",
+        "vts",
+        "cre"
+      ]
+    }
+  ]
+}
