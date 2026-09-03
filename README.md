@@ -13,7 +13,7 @@ and send, then logs every submittal back into VTS.
 These are ordinary shell commands, not slash commands — run them:
 
 ```bash
-claude plugin marketplace add OWNER/listing-outreach
+claude plugin marketplace add czervick212/listing-outreach
 claude plugin install listing-outreach@outreach-tools
 ```
 
