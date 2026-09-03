@@ -17,8 +17,8 @@ claude plugin marketplace add czervick212/listing-outreach
 claude plugin install listing-outreach@outreach-tools
 ```
 
-(Replace `OWNER` with this repo's GitHub owner.) If `claude` isn't on PATH, stop and tell the
-user to install Claude Code from https://claude.com/download, then reopen their terminal.
+If `claude` isn't on PATH, stop and tell the user to install Claude Code from
+https://claude.com/download, then reopen their terminal.
 
 **Then continue in this same session — do not make them restart.** Adding the marketplace clones
 the full plugin to disk, so everything is runnable immediately. Find it:
