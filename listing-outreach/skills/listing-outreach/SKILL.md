@@ -64,6 +64,20 @@ wrong wherever the road runs diagonally, which it usually does. Find competitor 
 bbox Overpass query on `amenity~"fast_food|restaurant|cafe|bank"` and filter names client-side —
 **a regex-over-area `name~"..."` query times out.**
 
+`classify_proximity.py` does all of this (stdlib only, no keys):
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/classify_proximity.py" \
+  "<site address>" --brands "Chipotle,Panera,Wendy's" [--barrier "I 270"] [--radius-mi 3]
+```
+
+Per brand it returns distance, which side of the barrier, the OSM drive-through flag, and a
+suggested verdict — SKIP (same side, close, has a drive-through), RELO (across the barrier, or a
+store with no drive-through the pad can offer), VERIFY (same side & close but OSM has no
+drive-through data — check the store), or a fresh-submittal note when no nearby store exists.
+Verdicts are advisory; confirm on the Ruled out tab. OSM drive-through tagging is sparse, so
+VERIFY is common and honest — don't let a missing tag assert a relo.
+
 ## Step 4 — A tenant already in the market is a relocation, not a dead end
 
 If a tenant trades nearby but their store lacks the format the pad offers — no drive-thru, wrong
