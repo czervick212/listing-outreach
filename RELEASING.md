@@ -9,8 +9,12 @@ is bumped. Bump it on **every** release, or your changes reach no one.
 4. Users update with: "ask Claude to update the listing outreach plugin," or
    `claude plugin marketplace update outreach-tools && claude plugin update listing-outreach`.
 
-Auto-update is OFF by default for third-party marketplaces. Each user enables it once via
-`/plugin` → Marketplaces → `outreach-tools` → Enable auto-update.
+Auto-update is OFF by default for third-party marketplaces — so a released fix reaches
+nobody who hasn't turned it on. Setup Step 5 now asks every new user and, on a yes, runs
+`lib/lo_autoupdate.py enable` (it sets the `autoUpdate` flag in Claude Code's
+`known_marketplaces.json`; there's no CLI subcommand for it). The main skill checks `status`
+and nudges once for anyone who installed before that step existed. The `/plugin` →
+Marketplaces → `outreach-tools` menu route still works if a user prefers it.
 
 ## Notes
 

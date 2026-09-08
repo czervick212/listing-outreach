@@ -14,6 +14,12 @@ Run `python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_config.py" show` — exit code 2 mean
 set up; stop and run `/listing-outreach-setup`. Scripts take the listing's paths and property id
 as arguments; nothing about any one user's filesystem is baked in.
 
+**Auto-update, once.** Run `python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_autoupdate.py" status`. If it
+prints `off`, the user is frozen on their installed version and fixes never reach them — catches
+anyone who installed before setup started asking. Say so **once, after the run is finished**, and
+offer `lo_autoupdate.py enable`. Never interrupt an outreach pass for it, and if they decline,
+drop it — don't raise it again next run.
+
 ## Inputs to collect first
 
 1. **The listing** — address, pad/space sizes, deal structure (sale, ground lease, or both).

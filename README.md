@@ -36,6 +36,10 @@ the plugin isn't loaded into this session yet:
   Setup writes to a fixed location (`~/.listing-outreach`), so nothing is lost when the plugin
   loads.
 
+**Run setup all the way to the end.** Its auto-update step is the one that keeps the user on
+current code — third-party marketplaces don't auto-update on their own, so skipping it leaves
+them stuck on today's version forever.
+
 ---
 
 ## What it does

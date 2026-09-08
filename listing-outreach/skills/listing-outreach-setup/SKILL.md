@@ -87,7 +87,27 @@ The dead-deal reason ids are needed to mark passes dead. Store them under
 python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_config.py" set mail.account "Work"
 ```
 
-## Step 5 — Confirm
+## Step 5 — Auto-update
+
+**Do not skip this, and do not decide it silently — ask.** Auto-update is OFF by default for
+third-party marketplaces, so without this the user is frozen at the version they installed and
+bug fixes never reach them.
+
+Ask plainly: *"Want the toolkit to update itself when I ship fixes? Otherwise you stay on this
+version until you ask for an update."* If they say yes:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_autoupdate.py" enable
+```
+
+That flips one flag in Claude Code's own marketplace store. If they'd rather not, leave it —
+`status` reports the current state, and they can update by hand whenever:
+
+```bash
+claude plugin marketplace update outreach-tools && claude plugin update listing-outreach
+```
+
+## Step 6 — Confirm
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_config.py" show
