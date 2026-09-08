@@ -35,7 +35,12 @@ const CSRF=document.querySelector('meta[name="csrf-token"]').content;
 const H={'Content-Type':'application/json','Accept':'application/json','X-CSRF-Token':CSRF,'X-Requested-With':'XMLHttpRequest'};
 const RO={'Accept':'application/json','X-Requested-With':'XMLHttpRequest'};
 const P=%(prop)d, UID=%(uid)d, IND=%(ind)d, DT=%(dt)d;
-const NOW=new Date().toISOString().replace(/\\.\\d+Z$/,'-04:00');
+const NOW=(()=>{                       // local wall time + the REAL utc offset.
+  // Was: new Date().toISOString().replace(/\\.\\d+Z$/,'-04:00') — that relabels the UTC
+  // clock as Eastern, pushing anything written after noon ET onto the NEXT calendar day.
+  const d=new Date(), o=-d.getTimezoneOffset(), s=o>=0?'+':'-', a=Math.abs(o);
+  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().replace(/\\.\\d+Z$/,'')
+    +s+String(Math.floor(a/60)).padStart(2,'0')+':'+String(a%60).padStart(2,'0');})();
 const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const sleep=ms=>new Promise(s=>setTimeout(s,ms));
 async function DEALS(){const u=`/api/horse/deals?activity_report_filter[properties][]=${P}&activity_report_filter[page]=1&activity_report_filter[page_size]=100&properties[]=${P}&page=1&page_size=100`;
