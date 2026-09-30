@@ -256,9 +256,25 @@ def due(blast, today=None):
     return out
 
 
+ORG_WORDS = {"hospitality", "family", "llc", "inc", "co", "company", "restaurants",
+             "restaurant", "team", "partners", "management", "owners", "office"}
+
+
+def first_name(contact):
+    """A first name to greet, or "there" when the contact is a company rather than a person.
+    'Villagio Hospitality Group' and 'Lina family' are not people; 'Carlos Delgado group'
+    still names one, so a trailing 'group' is dropped when two words are left."""
+    words = [w.strip(".,") for w in (contact or "").split()]
+    if words and words[-1].lower() == "group" and len(words) >= 3:
+        words = words[:-1]
+    if not words or "@" in words[0] or any(w.lower() in ORG_WORDS | {"group"} for w in words):
+        return "there"
+    return words[0]
+
+
 def fill(template, s, blast):
     """Placeholders: {first_name} {contact} {tenant} {listing}."""
-    first = (s.get("contact") or "").strip().split(" ")[0] or "there"
+    first = first_name(s.get("contact"))
     tenants = [t.get("tenant") for t in s.get("tenants") or [] if t.get("tenant")]
     tenant = (tenants[0] if len(tenants) == 1
               else ", ".join(tenants[:-1]) + " and " + tenants[-1] if tenants else "")
