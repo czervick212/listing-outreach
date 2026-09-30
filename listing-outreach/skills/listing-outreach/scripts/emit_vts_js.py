@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+"""VTS DATABASE HANDBOOK 2.0 compliance — what is here and what is not.
+
+  Step 1 (no autopopulate): makeDeal now sends `custom_tenant_name` so VTS records the name
+     we typed rather than silently linking its global tenant. Measured on the 2026-09-03
+     Westview blast, Ionna / 7-Eleven / Zaxby's / Popeyes all came back carrying a
+     `capital_iq_id` -- VTS had matched and linked them, the duplicate path Step 1 forbids.
+     *** UNVERIFIED: needs ONE live test deal before the next real blast. ***
+  Step 2 (industry): already compliant -- deals read back as "retail (general)".
+  Steps 4/5/6 (size block, "Main; Sub" description, H&R MASTER DATABASE 2.0): those live on
+     the REQUIREMENT ("TIM"), a different object from the deal. See emit_tim_js.py.
+     Creating a deal does NOT create a requirement.
+
+"""
+
 """Emit ready-to-run JS for the VTS write plan, in batches, to paste into javascript_tool
 on an OPEN, logged-in VTS deals tab for the target property.
 
@@ -52,9 +66,10 @@ async function latestIter(id){
 async function makeDeal(name, contact){
   const body={activity_log:{contacts:[],status:"initial_inquiry",date:NOW,undisclosedTenant:false,
     space_ids:[],property_ids:[P],office_park_ids:[],can_update_stage:true,deal_type_id:DT,
-    tenant:name,tenant_industry_id:IND,deal_leads:[{id:UID,label:"%(uname)s",value:UID}],
+    tenant:name,custom_tenant_name:name,tenant_industry_id:IND,
+    deal_leads:[{id:UID,label:"%(uname)s",value:UID}],
     deal_lead_ids:[UID],submarket_ids:[],activity_log_tenants_attributes:[],
-    activity_log_brokers_attributes: contact?[contact]:[],custom_tenant_name:null}};
+    activity_log_brokers_attributes: contact?[contact]:[]}};
   const r=await fetch('/activity_logs',{method:'POST',headers:H,credentials:'same-origin',body:JSON.stringify(body)});
   return r.status;
 }

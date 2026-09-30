@@ -10,9 +10,9 @@ assumption here. When Claude is helping a Windows user, this file is the support
 |---|---|---|
 | Build target sheet (`build_vts_plan`, `build_send_manifest`) | ✅ | pure Python + openpyxl |
 | Write to VTS (`emit_vts_js` in Chrome) | ✅ | browser automation, OS-independent |
-| Draft emails w/ flyer (`make_drafts`) | ✅ classic Outlook | `lib/lo_mail.py` COM backend |
-| Clear drafts (`cleanup_drafts`) | ✅ classic Outlook | COM, deletes from Drafts folder |
-| Scan replies (`scan_replies`) | ✅ classic Outlook | COM, reads the Inbox |
+| Draft emails w/ flyer (`make_drafts`) | ✅ | classic Outlook via COM, **or any Outlook via Graph** |
+| Clear drafts (`cleanup_drafts`) | ✅ | COM deletes from the Drafts folder; Graph deletes server-side |
+| Scan replies (`scan_replies`) | ✅ | COM reads the Inbox; Graph reads it over the API |
 
 ## Python
 
@@ -29,14 +29,22 @@ python -m pip install --user openpyxl pywin32
 ```
 
 `pywin32` is what provides `win32com.client`. It is Windows-only; on macOS it isn't installed
-and isn't needed (the Mail.app AppleScript path is used instead).
+and isn't needed. The Graph backend needs neither — it is stdlib-only — so a New Outlook user
+who can't install `pywin32` past a corporate network still has a working email half.
 
 ## Outlook: classic vs. New
 
-The email features drive **classic Outlook desktop** through COM automation. The **New Outlook**
-(the Store/webview app) does **not** expose COM — `Dispatch("Outlook.Application")` fails. A user
-on New Outlook must either switch classic Outlook back on (toggle in New Outlook's title bar), or
-send manually from the target sheet's contact list. The VTS-write half is unaffected either way.
+The COM backend drives **classic Outlook desktop**. The **New Outlook** (the Store/webview app)
+does **not** expose COM — `Dispatch("Outlook.Application")` fails.
+
+A user on New Outlook has two ways out, in this order:
+
+1. **Set up the Graph backend** — `references/mail-backends.md`. It talks to the mailbox over
+   Microsoft's API instead of the app, so it works on New Outlook, classic Outlook, and a
+   machine with no mail client configured. This is the one to recommend.
+2. Switch classic Outlook back on (toggle in New Outlook's title bar) and keep using COM.
+
+The VTS-write half is unaffected either way.
 
 ## Behavior differences to expect
 

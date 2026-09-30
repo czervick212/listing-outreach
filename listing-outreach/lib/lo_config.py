@@ -8,12 +8,24 @@ Stored at ~/.listing-outreach/config.json. Shape:
   "user": {
     "name": "Jane Broker",              # signs the emails; deal lead on VTS writes
     "email": "jbroker@example.com",     # From: address on the outreach mail
-    "vts_user_id": 12345                # VTS deal-lead id (from window.vts.user.id)
+    "vts_user_id": 12345                # OPTIONAL — only to log submittals to VTS
   },
-  "vts": {
+  "contact_index": "",                  # optional; path to a contact_index.json, which
+                                        # gives the contact cascade its two free rungs
+                                        # before Lusha. Unset = start the cascade at Lusha.
+  "vts": {                              # OPTIONAL — the VTS logging steps only
     "tenant_industry_id": 122,          # "Retail (General)" on most accounts
     "deal_type_id": 1,                  # "New Deal"
     "dead_deal_reasons": { "requirement_dead": 35, ... }
+  },
+  "mail": {                             # optional; the email half only
+    "backend": "graph",                 # graph | apple-mail | outlook-com. Unset = decide:
+                                        #   Graph if configured, else the platform default
+    "account": "Exchange",              # Apple Mail account holding Drafts (that path only)
+    "graph": {
+      "client_id": "<application-id>",  # their own Azure app registration — see lo_graph.py
+      "tenant": "organizations"         # or their tenant id, if they were given one
+    }
   }
 }
 
@@ -68,8 +80,30 @@ def _set(cfg, dotted, value):
 
 
 def is_ready(cfg):
-    return bool(_dig(cfg, "user.name") and _dig(cfg, "user.email")
-               and _dig(cfg, "user.vts_user_id"))
+    """Enough to run an outreach pass. VTS is NOT required.
+
+    Outreach has two halves: building a target list and mailing it, which need only
+    an identity; and logging submittals back to VTS, which needs the VTS block. A
+    canvass of local operators -- dentists, vets, a regional chain with no corporate
+    real estate team -- never touches VTS at all, and demanding vts_user_id up front
+    stopped that user before they started.
+    """
+    return bool(_dig(cfg, "user.name") and _dig(cfg, "user.email"))
+
+
+def contact_index(cfg):
+    """Path to the user's contact index, or "" -- rungs 1-2 of the contact cascade.
+
+    Entirely optional. With it, the free rungs answer most of a chain list before any
+    Lusha credit is spent; without it the cascade simply starts at Lusha. Nobody needs
+    to build an index to run an outreach pass.
+    """
+    return _dig(cfg, "contact_index") or ""
+
+
+def vts_ready(cfg):
+    """Enough to write submittals back to VTS -- checked only by the VTS steps."""
+    return bool(_dig(cfg, "user.vts_user_id") and _dig(cfg, "vts"))
 
 
 def main():
@@ -81,7 +115,8 @@ def main():
             sys.exit(2)
         print(json.dumps(cfg, indent=2))
         if not is_ready(cfg):
-            print("\n(incomplete — user.name, user.email and user.vts_user_id are required)",
+            print("\n(incomplete — user.name and user.email are required; "
+                  "user.vts_user_id + vts.* only if you log submittals to VTS)",
                   file=sys.stderr)
             sys.exit(2)
         return

@@ -65,6 +65,9 @@ for r in range(2, ws.max_row + 1):
     submitted.append({
         "tenant": cell(r, "Tenant"),
         "comment": "Submitted potential relo opportunity." if is_relo(r) else "Submitted site.",
+        # carried through for emit_tim_js.py -- Handbook Steps 4/5 need the category to set
+        # the requirement's "Main; Sub" description and guess its size block
+        "category": cell(r, "Category") or "",
         "contact": {"first_name": first, "last_name": last, "email": email,
                     "company_name": cell(r, "Firm") or "", "type": "broker"},
     })

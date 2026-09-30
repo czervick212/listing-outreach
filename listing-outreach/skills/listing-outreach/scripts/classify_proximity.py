@@ -7,7 +7,12 @@ often enough to matter, because a barrier (an interstate, a river) — not raw m
 separates trade areas. It scripts the "which side of the interstate is their store on?" test.
 
     python classify_proximity.py "<site address>" --brands "Chipotle,Panera,Wendy's" \\
-        [--barrier "I 270"] [--radius-mi 3]
+        [--barrier "I 270"] [--radius-mi 3] [--uses food,coffee]
+
+--uses picks the OSM tags to look for, so this works for any retail use and not just
+food: food (default), coffee, bank, dentist, medical, vet, pharmacy, fitness,
+childcare, carwash, auto, salon, grocery, liquor, pet. Several are fine, comma
+separated. Raw tag values can be forced with --amenity / --shop / --healthcare.
 
 What it does (stdlib only — ArcGIS + OpenStreetMap/Overpass, no API keys, cross-platform):
   1. Geocode the site to ROOFTOP (ArcGIS PointAddress — never Census centerline).
@@ -41,6 +46,20 @@ SITE = sys.argv[1]
 BRANDS = [b.strip() for b in arg("--brands", "").split(",") if b.strip()]
 BARRIER = arg("--barrier")
 RADIUS_MI = float(arg("--radius-mi", "3"))
+
+# OSM tags per use, from the shared table so this and find_local_operators.py can
+# never disagree about what "dentist" means. --uses takes its keys; raw tag values can
+# still be forced with --amenity / --shop / --healthcare.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from use_tags import USE_TAGS, resolve as _resolve_tags  # noqa: E402
+_uses = [u.strip().lower() for u in arg("--uses", "food").split(",") if u.strip()]
+try:
+    _tags = _resolve_tags(_uses)
+except KeyError as _e:
+    sys.exit(str(_e).strip('"'))
+AMENITY = arg("--amenity") or "|".join(sorted(_tags["amenity"])) or "no_such_tag"
+SHOP = arg("--shop") or "|".join(sorted(_tags["shop"])) or "no_such_tag"
+HEALTHCARE = arg("--healthcare") or "|".join(sorted(_tags["healthcare"])) or "no_such_tag"
 OUT = os.path.join(os.path.expanduser("~"), ".listing-outreach", "proximity.json")
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
@@ -104,8 +123,14 @@ def side_sign(lat, lon, pts):
 
 def nearby_pois(lat, lon, pad=0.06):
     bbox = f"{lat-pad},{lon-pad},{lat+pad},{lon+pad}"
-    q = (f'[out:json][timeout:90];(nwr["amenity"~"^(fast_food|restaurant|cafe|bank)$"]({bbox}););'
-         f'out center tags;')
+    # The tag set has to follow the use being canvassed. Hardcoding food and banks
+    # made this silently useless for every other category -- a dentist canvass found
+    # zero competitors and read every target as a fresh market.
+    q = (f'[out:json][timeout:90];('
+         f'nwr["amenity"~"^({AMENITY})$"]({bbox});'
+         f'nwr["shop"~"^({SHOP})$"]({bbox});'
+         f'nwr["healthcare"~"^({HEALTHCARE})$"]({bbox});'
+         f');out center tags;')
     j = json.loads(_post(OVERPASS, "data=" + urllib.parse.quote(q)))
     out = []
     for el in j.get("elements", []):

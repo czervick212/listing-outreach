@@ -1,8 +1,15 @@
 # Listing Outreach
 
-New listing? Blast it to the whole market in one pass. Claude builds the target list from a
-comparable VTS pipeline, drafts one email per broker with the flyer attached for you to review
-and send, then logs every submittal back into VTS.
+New listing? Blast it to the whole market in one pass — inline suite, junior box, second-gen
+restaurant, pad or ground lease. Claude builds the target list from whichever source fits the
+tenant you're chasing: a comparable VTS pipeline, research on chains that are actually
+expanding, or the local operators already trading near the site. It finds the right contact
+cheapest-source-first, drafts one email per person with the flyer attached for you to review
+and send, and logs every submittal back into VTS if you use it — then drafts the follow-ups for
+anyone who hasn't answered.
+
+Works for national chains and for local operators — dentists, vets, salons, independent
+restaurants — and runs with or without VTS.
 
 ---
 
@@ -48,16 +55,23 @@ them stuck on today's version forever.
    contact on it is one you've used on a real deal recently.
 2. **Applies your exclusions** — LA carve-outs, size misfits, and a proximity rule you define
    (the barrier the market actually uses, not a blind radius).
-3. **Writes one email per broker** — consolidated, personalized, flyer attached — and opens them
-   as reviewable Mail.app compose windows. Nothing sends on its own.
+3. **Writes one email per broker** — consolidated, personalized, flyer attached — and leaves
+   them as drafts for you to review. Nothing sends on its own.
 4. **Logs every send back to VTS** — one deal per tenant, "Submitted site" or "Submitted
    potential relo opportunity," with passes marked dead and reasoned.
 5. **Tracks the replies** — a reply covering several tenants is split back to the right deals.
+6. **Follows up** — anyone who hasn't replied after 3 business days (and again at 10) gets a
+   nudge drafted every weekday morning as a **reply on the original email**, ready to review and
+   send. A reply at any point takes them off the list.
+7. **Read receipts, if you want them** — per blast. Honest caveat: most mail apps ask the
+   recipient first, and Gmail and Apple Mail never send one, so no receipt doesn't mean unread.
 
 ## Requirements
 
-- **macOS or Windows** for the email half — Mail.app on macOS, classic Outlook (via COM/pywin32)
-  on Windows. New Outlook has no COM; use classic. The VTS-write half is cross-platform.
+- **A mailbox** for the email half — **Outlook** on either platform (new or classic, connected
+  once through Microsoft Graph), **Apple Mail** on macOS, or **classic Outlook** on Windows via
+  COM/pywin32. See `listing-outreach/references/mail-backends.md`. The VTS-write half is
+  cross-platform and needs none of this.
 - **Claude Code** with the Claude-in-Chrome extension, signed in to VTS **in Chrome**.
 - **Python 3** with `openpyxl` (setup installs it).
 - An enrichment tool (e.g. Lusha) is optional but helps fill contact gaps.
@@ -73,6 +87,7 @@ plugin updates never touch it.
 
 Hand Claude a new listing — the address, the tenant categories you're chasing, and the flyer —
 and say **"blast this listing."** Review the target sheet, review each email window, hit Send.
+Later: **"any follow-ups due?"** or **"who's read the <listing> email?"**
 
 ## Updating
 

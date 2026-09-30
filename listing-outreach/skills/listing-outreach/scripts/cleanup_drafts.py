@@ -5,6 +5,7 @@ the drafts matching a subject from a given day.
     python cleanup_drafts.py "Listing subject fragment"              # today
     python cleanup_drafts.py "Listing subject fragment" 2026-01-15   # a specific day
     python cleanup_drafts.py "Listing subject fragment" --count      # count only, delete nothing
+    python cleanup_drafts.py "Listing subject fragment" --all-dates  # every matching draft, any day
 
 (Use `python3` on macOS/Linux, `python` on Windows.)
 
@@ -16,6 +17,9 @@ delete from Drafts where scripting is reliable. Mail still throttles scripted de
 unpredictably — if it stalls, do it by hand: Drafts -> search the subject -> select all -> Delete.
 
 Windows: deletes matching items straight from the Outlook Drafts folder via COM.
+
+Outlook/Graph: deletes server-side from the Drafts folder — no windows to save, and
+`mail.account` is ignored (the drafts are wherever you signed in).
 """
 import sys
 import os
@@ -31,10 +35,12 @@ if len(sys.argv) < 2:
 
 SUBJECT = sys.argv[1]
 COUNT_ONLY = "--count" in sys.argv
+ALL_DATES = "--all-dates" in sys.argv
 rest = [a for a in sys.argv[2:] if not a.startswith("--")]
 DAY = rest[0] if rest else datetime.date.today().isoformat()
 
-# Mail account holding Drafts (macOS only; Windows uses the default Outlook profile).
+# Mail account holding Drafts (Apple Mail only; the Outlook backends use the mailbox
+# you're signed in to).
 CFG = os.path.join(os.path.expanduser("~"), ".listing-outreach", "config.json")
 try:
     ACCOUNT = json.load(open(CFG)).get("mail", {}).get("account") or "Exchange"
@@ -43,7 +49,16 @@ except Exception:
 
 if COUNT_ONLY:
     print("--count is advisory; re-run without it to delete. "
-          "On macOS this still saves any open compose windows first.")
+          "On Apple Mail this still saves any open compose windows first.")
 
-result = lo_mail.cleanup_drafts(SUBJECT, DAY, ACCOUNT)
-print(f"deleted {result} draft(s) matching '{SUBJECT}' dated {DAY} -> Deleted Items")
+result = lo_mail.cleanup_drafts(SUBJECT, DAY, ACCOUNT, ALL_DATES)
+when = "any date" if ALL_DATES else f"dated {DAY}"
+print(f"deleted {result} draft(s) matching '{SUBJECT}' {when} -> Deleted Items")
+if str(result).startswith("ERR"):
+    print("  Nothing was deleted. Re-run with --all-dates if the drafts are from another day,\n"
+          "  or clear them by hand: Drafts -> search the subject -> select all -> Delete.")
+elif "/" in str(result):
+    gone, found = str(result).split("/", 1)
+    if gone != found:
+        print(f"  {found} matched but only {gone} deleted - Mail throttles scripted deletes. "
+              f"Re-run to finish the rest.")

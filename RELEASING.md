@@ -16,6 +16,19 @@ nobody who hasn't turned it on. Setup Step 5 now asks every new user and, on a y
 and nudges once for anyone who installed before that step existed. The `/plugin` →
 Marketplaces → `outreach-tools` menu route still works if a user prefers it.
 
+## Version history
+
+| version | change |
+|---|---|
+| 0.7.0 | follow-ups + read receipts: per-listing blast logs, nudges at 3/10 business days drafted as thread replies, daily 7 AM schedule, receipts per blast (Apple Mail via a watched mailbox-wide switch) |
+| 0.6.0 | any listing type, and local operators as a list source |
+| 0.5.0 | Outlook backend over Microsoft Graph — works on New Outlook, Mac or Windows |
+| 0.4.0 | ask every user to turn on auto-update at install |
+| 0.3.1 | release the VTS timestamp fix |
+| 0.3.0 | script the proximity / relocation classifier (Step 3+4) |
+| 0.2.0 | Windows support for the email half |
+| 0.1.0 | first release |
+
 ## Notes
 
 - `claude plugin ...` are ordinary shell commands, so Claude can install/update the plugin

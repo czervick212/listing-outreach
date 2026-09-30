@@ -1,18 +1,23 @@
 {
   "name": "listing-outreach",
   "displayName": "Listing Outreach",
-  "version": "0.4.0",
-  "description": "New listing? Blast it to the whole market. Claude builds the target list from a comparable VTS pipeline, writes one email per broker with the flyer attached for you to review and send, and logs every submittal back into VTS.",
+  "version": "0.7.0",
+  "description": "Any retail listing \u2014 inline, box, restaurant, pad or ground lease \u2014 blasted to the whole market. Claude builds the target list from whichever source fits the tenant you're chasing (a comparable VTS pipeline, expanding chains, or the local operators already trading nearby), finds the right contact cheapest-source-first, writes one email per person with the flyer attached for you to review and send, and logs submittals back to VTS when you use it, then follows up: optional read receipts, and nudges drafted as replies on the original thread for anyone who hasn't answered.",
   "author": {
     "name": "Leasing Tools"
   },
   "keywords": [
-    "leasing",
-    "prospecting",
-    "outreach",
-    "vts",
+    "canvass",
     "cre",
+    "follow-up",
+    "landlord",
+    "leasing",
+    "local",
+    "outreach",
+    "prospecting",
+    "read-receipts",
     "retail",
-    "landlord"
+    "tenant-rep",
+    "vts"
   ]
 }

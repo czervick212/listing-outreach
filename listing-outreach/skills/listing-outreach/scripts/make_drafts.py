@@ -4,11 +4,19 @@
     python make_drafts.py <targets.xlsx> <flyer.pdf>            # all sends
     python make_drafts.py <targets.xlsx> <flyer.pdf> 0 10       # a batch (start, count)
     python make_drafts.py <targets.xlsx> <flyer.pdf> --list     # print the send list only
+    python make_drafts.py <targets.xlsx> <flyer.pdf> --receipts [--blast "<Listing Name>"]
+
+--receipts asks each recipient's mail app for a read receipt. Outlook/Graph flag each draft.
+Apple Mail can't do that per message, so it switches on Mail's receipt header for the whole
+mailbox and starts a background watcher that switches it off once every email in the blast
+is in Sent (6 hours at the latest). Build the blast log first (build_send_manifest.py) —
+the watcher reads it; --blast names it, otherwise the most recent one is used.
 
 (Use `python3` on macOS/Linux, `python` on Windows — try one, use the other if it's missing.)
 
-Windows open visible and are NOT saved or sent — review each, then Send by hand.
-- macOS: Mail.app.  - Windows: classic Outlook desktop (needs pywin32; New Outlook has no COM).
+Nothing is sent — review each draft, then Send by hand. Where the drafts appear depends on
+the backend (see lib/lo_mail.py): Outlook/Graph puts them in your Drafts folder, Apple Mail
+and classic Outlook open them as compose windows on screen.
 The From: address comes from ~/.listing-outreach/config.json (user.email); the signature is
 whatever the mail client applies to that account.
 
@@ -23,6 +31,7 @@ import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "lib"))
 import lo_mail  # noqa: E402
+import lo_blasts  # noqa: E402
 
 if len(sys.argv) < 3:
     print(__doc__)
@@ -30,6 +39,10 @@ if len(sys.argv) < 3:
 
 SHEET, FLYER = sys.argv[1], sys.argv[2]
 rest = sys.argv[3:]
+RECEIPTS = "--receipts" in rest
+BLAST = rest[rest.index("--blast") + 1] if "--blast" in rest else None
+if BLAST:
+    rest = [a for a in rest if a not in ("--blast", BLAST)]
 
 CFG = os.path.join(os.path.expanduser("~"), ".listing-outreach", "config.json")
 try:
@@ -67,8 +80,29 @@ nums = [a for a in rest if a.isdigit()]
 START = int(nums[0]) if len(nums) > 0 else 0
 COUNT = int(nums[1]) if len(nums) > 1 else len(sends)
 batch = sends[START:START + COUNT]
-print(f"total sends: {len(sends)} | opening {len(batch)} (index {START}-{START + len(batch) - 1})")
+print(f"total sends: {len(sends)} | drafting {len(batch)} "
+      f"(index {START}-{START + len(batch) - 1})")
 
-ok, fail = lo_mail.open_drafts(batch, os.path.abspath(FLYER), SENDER)
-print(f"\nopened {ok}, failed {fail} — review each window and send. "
-      f"Nothing was saved or sent automatically.")
+if RECEIPTS and lo_mail.backend() == "apple-mail":
+    import lo_receipts
+    if BLAST:
+        slug = lo_blasts.slugify(BLAST)
+    else:
+        try:
+            slug = lo_blasts.slugify(json.load(open(lo_blasts.LEGACY))["listing"])
+        except Exception:
+            slug = None
+    if not slug or not os.path.exists(lo_blasts.path_for(slug)):
+        print("--receipts needs the blast log first: run build_send_manifest.py, then pass "
+              "--blast \"<Listing Name>\".", file=sys.stderr)
+        raise SystemExit(2)
+    deadline = lo_receipts.on(slug, SENDER)
+    lo_receipts.start_watcher(slug)
+    print(f"Read receipts ON in Apple Mail until this blast is sent (auto-off by "
+          f"{deadline:%-I:%M %p}). Anything else you send before then asks for one too.")
+
+ok, fail = lo_mail.open_drafts(batch, os.path.abspath(FLYER), SENDER, receipts=RECEIPTS)
+where = ("your Outlook Drafts folder" if lo_mail.backend() == "graph"
+         else "the compose windows on screen")
+print(f"\ndrafted {ok}, failed {fail} — review in {where} and send by hand. "
+      f"Nothing was sent automatically.")
