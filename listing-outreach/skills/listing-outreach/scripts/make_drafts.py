@@ -5,6 +5,13 @@
     python make_drafts.py <targets.xlsx> <flyer.pdf> 0 10       # a batch (start, count)
     python make_drafts.py <targets.xlsx> <flyer.pdf> --list     # print the send list only
     python make_drafts.py <targets.xlsx> <flyer.pdf> --receipts [--blast "<Listing Name>"]
+    python make_drafts.py <targets.xlsx> <flyer.pdf> --send [--wait 5]   # SEND, then bounce-check
+
+--send (Apple Mail only) sends instead of drafting — only after the user has approved the list.
+One at a time, each address logged to ~/.listing-outreach/sends/<sheet>.json as it goes, so a
+re-run never sends twice. It then waits --wait minutes (default 5) for bounces, reads them from
+Mail, and records delivered/bounced per address. Pass that log to build_vts_plan.py --send-log
+so VTS is written only for the emails that landed.
 
 --receipts asks each recipient's mail app for a read receipt. Outlook/Graph flag each draft.
 Apple Mail can't do that per message, so it switches on Mail's receipt header for the whole
@@ -14,7 +21,7 @@ the watcher reads it; --blast names it, otherwise the most recent one is used.
 
 (Use `python3` on macOS/Linux, `python` on Windows — try one, use the other if it's missing.)
 
-Nothing is sent — review each draft, then Send by hand. Where the drafts appear depends on
+Without --send nothing is sent — review each draft, then Send by hand. Where the drafts appear depends on
 the backend (see lib/lo_mail.py): Outlook/Graph puts them in your Drafts folder, Apple Mail
 and classic Outlook open them as compose windows on screen.
 The From: address comes from ~/.listing-outreach/config.json (user.email); the signature is
@@ -40,6 +47,11 @@ if len(sys.argv) < 3:
 SHEET, FLYER = sys.argv[1], sys.argv[2]
 rest = sys.argv[3:]
 RECEIPTS = "--receipts" in rest
+SEND = "--send" in rest
+WAIT = 5
+if "--wait" in rest:
+    WAIT = float(rest[rest.index("--wait") + 1])
+    rest = [a for i, a in enumerate(rest) if not (a == "--wait" or (i and rest[i - 1] == "--wait"))]
 BLAST = rest[rest.index("--blast") + 1] if "--blast" in rest else None
 if BLAST:
     rest = [a for a in rest if a not in ("--blast", BLAST)]
@@ -100,6 +112,49 @@ if RECEIPTS and lo_mail.backend() == "apple-mail":
     lo_receipts.start_watcher(slug)
     print(f"Read receipts ON in Apple Mail until this blast is sent (auto-off by "
           f"{deadline:%-I:%M %p}). Anything else you send before then asks for one too.")
+
+# Keep the flyer with the blast log: every nudge re-attaches it (follow-ups.py).
+_slug = lo_blasts.slugify(BLAST) if BLAST else None
+if not _slug:
+    try:
+        _slug = lo_blasts.slugify(json.load(open(lo_blasts.LEGACY))["listing"])
+    except Exception:
+        _slug = None
+if _slug and os.path.exists(lo_blasts.path_for(_slug)):
+    _b = json.load(open(lo_blasts.path_for(_slug)))
+    _kept = lo_blasts.keep_flyer(_slug, os.path.abspath(FLYER))
+    if _kept and _b.get("flyer") != _kept:
+        _b["flyer"] = _kept
+        lo_blasts.save(_b)
+
+if SEND:
+    import time
+    import lo_bounces
+    os.makedirs(os.path.join(lo_blasts.BASE, "sends"), exist_ok=True)
+    LOG = os.path.join(lo_blasts.BASE, "sends",
+                       os.path.splitext(os.path.basename(SHEET))[0] + ".json")
+    started = time.time() - 60
+    sent, skipped, failed = lo_mail.send_now(batch, os.path.abspath(FLYER), SENDER, LOG)
+    print(f"\nsent {sent}, already sent {skipped}, failed {failed}  (log: {LOG})")
+    if sent and WAIT > 0:
+        print(f"waiting {WAIT:g} min for bounces before anything is logged to VTS...")
+        time.sleep(WAIT * 60)
+    log = json.load(open(LOG)) if os.path.exists(LOG) else {}
+    mine = [k for k, v in log.items() if v.get("sent")]
+    since = min([log[k]["at"] for k in mine] + [started]) - 60
+    bad = lo_bounces.bounced(mine, since)
+    if bad is None:
+        print("couldn't read Mail's index — bounce check skipped; check Mail before logging VTS.")
+    else:
+        for k in mine:
+            log[k]["bounced"] = k in bad
+        with open(LOG, "w") as f:
+            json.dump(log, f, indent=1)
+        landed = [k for k in mine if k not in bad]
+        print(f"delivered {len(landed)}, bounced {len(bad)}")
+        for k in sorted(bad):
+            print(f"  BOUNCED  {log[k]['tenant']} <{k}> — needs a new contact; no VTS comment")
+    raise SystemExit(1 if failed else 0)
 
 ok, fail = lo_mail.open_drafts(batch, os.path.abspath(FLYER), SENDER, receipts=RECEIPTS)
 where = ("your Outlook Drafts folder" if lo_mail.backend() == "graph"

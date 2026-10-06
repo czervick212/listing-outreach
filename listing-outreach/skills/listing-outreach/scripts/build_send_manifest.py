@@ -13,6 +13,7 @@ exact tenant set, as long as we record it at send time. That's what this writes.
 
     python3 build_send_manifest.py <targets.xlsx> <vts_property_id|0> "<Listing Name>"
         [--receipts] [--followup "<nudge 1>"] [--followup2 "<nudge 2>"] [--cadence 3,10]
+        [--flyer <flyer.pdf>]
 
 It also writes this blast's own log, ~/.listing-outreach/blasts/<listing>.json, which is
 what follow-ups run from (followups.py). The follow-up messages are written once for the
@@ -26,7 +27,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import lo_blasts  # noqa: E402
 
 pos = [a for i, a in enumerate(sys.argv[1:], 1)
-       if not a.startswith("--") and not sys.argv[i - 1] in ("--followup", "--followup2", "--cadence")]
+       if not a.startswith("--") and not sys.argv[i - 1] in ("--followup", "--followup2", "--cadence", "--flyer")]
 if len(pos) < 3:
     print(__doc__)
     raise SystemExit(1)
@@ -111,6 +112,8 @@ blast = {
     "built": old.get("built") or lo_blasts.iso(lo_blasts.now()),
     "receipts": bool("--receipts" in sys.argv or old.get("receipts")),
     "followup": followup, "cadence": cadence, "closed": False, "sends": sends,
+    "flyer": (lo_blasts.keep_flyer(slug, opt("--flyer")) if opt("--flyer") else None)
+             or old.get("flyer"),
 }
 lo_blasts.save(blast)
 print(f"wrote {lo_blasts.path_for(slug)}")

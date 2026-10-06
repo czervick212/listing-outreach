@@ -28,6 +28,31 @@ LEGACY = os.path.join(BASE, "send-manifest.json")
 DEFAULT_CADENCE = [3, 10]      # business days after the original send: nudge 1, nudge 2
 
 
+FLYERS = os.path.join(BASE, "flyers")
+
+
+def keep_flyer(slug, path):
+    """Copy the blast's flyer to ~/.listing-outreach/flyers/<slug>/<its own name> and return
+    that path. The file name is what the recipient sees on the attachment, so it is kept.
+    Nudges re-attach it, and the 7 AM job can't count on the original: Dropbox online-only
+    placeholders and launchd's CloudStorage block both leave it unreadable at run time."""
+    import shutil
+    if not path or not os.path.isfile(path) or os.path.getsize(path) == 0:
+        return None
+    folder = os.path.join(FLYERS, slug)
+    os.makedirs(folder, exist_ok=True)
+    dest = os.path.join(folder, os.path.basename(path))
+    if os.path.abspath(path) != os.path.abspath(dest):
+        shutil.copyfile(path, dest)
+    return dest
+
+
+def flyer_for(blast):
+    """The blast's kept flyer, if it is still there."""
+    f = blast.get("flyer")
+    return f if f and os.path.isfile(f) and os.path.getsize(f) > 0 else None
+
+
 def now():
     return datetime.datetime.now().astimezone()
 
@@ -260,10 +285,22 @@ ORG_WORDS = {"hospitality", "family", "llc", "inc", "co", "company", "restaurant
              "restaurant", "team", "partners", "management", "owners", "office"}
 
 
-def first_name(contact):
-    """A first name to greet, or "there" when the contact is a company rather than a person.
+# Shared inboxes: whoever reads info@ is rarely the name on the sheet, so they get "there".
+ROLE_INBOXES = {"info", "hello", "hi", "contact", "contactus", "mail", "email", "inquiries",
+                "inquiry", "enquiries", "reservations", "reservation", "reserve", "events",
+                "event", "catering", "office", "admin", "team", "general", "support", "sales",
+                "marketing", "leasing", "realestate", "development", "expansion", "booking",
+                "bookings", "host", "manager", "management", "careers", "jobs", "press"}
+
+
+def first_name(contact, email=None):
+    """A first name to greet, or "there" when the contact is a company rather than a person,
+    or the address is a shared inbox (info@, reservations@ ...).
     'Villagio Hospitality Group' and 'Lina family' are not people; 'Carlos Delgado group'
     still names one, so a trailing 'group' is dropped when two words are left."""
+    local = re.sub(r"[^a-z]", "", (email or "").split("@")[0].lower())
+    if local in ROLE_INBOXES:
+        return "there"
     words = [w.strip(".,") for w in (contact or "").split()]
     if words and words[-1].lower() == "group" and len(words) >= 3:
         words = words[:-1]
@@ -274,7 +311,7 @@ def first_name(contact):
 
 def fill(template, s, blast):
     """Placeholders: {first_name} {contact} {tenant} {listing}."""
-    first = first_name(s.get("contact"))
+    first = first_name(s.get("contact"), s.get("to"))
     tenants = [t.get("tenant") for t in s.get("tenants") or [] if t.get("tenant")]
     tenant = (tenants[0] if len(tenants) == 1
               else ", ".join(tenants[:-1]) + " and " + tenants[-1] if tenants else "")

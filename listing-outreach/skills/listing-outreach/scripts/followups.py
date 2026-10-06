@@ -4,6 +4,7 @@
     python3 followups.py status [listing]        # sync with the mailbox, print where each blast stands
     python3 followups.py run [--dry-run]         # the daily job: sync, draft due nudges, notify
     python3 followups.py set <listing> [--followup "..."] [--followup2 "..."] [--cadence 3,10]
+                                         [--flyer <flyer.pdf>]   # re-attached to every nudge
     python3 followups.py close <listing>         # stop following up on a blast (reopen: `reopen`)
     python3 followups.py import-legacy           # make a blast log from an old send-manifest.json
     python3 followups.py schedule install|remove|status
@@ -293,11 +294,12 @@ def run(dry=False, force=False):
                 print(f"  would draft nudge {n} → {who}\n      {text[:100]}")
                 drafted.setdefault(b["slug"], []).append((s, n))
                 continue
-            ok, err = lo_mail.draft_followup(s, text, me())
+            ok, err = lo_mail.draft_followup(s, text, me(), lo_blasts.flyer_for(b))
             if ok:
                 s["followups"].append({"n": n, "drafted_at": lo_blasts.iso(lo_blasts.now()),
                                        "sent_at": None})
                 drafted.setdefault(b["slug"], []).append((s, n))
+                lo_blasts.save(b)      # per draft: a killed run must not redraft these
                 log(f"{b['slug']}: drafted nudge {n} -> {s['to']}")
             else:
                 failed.append(f"{b['listing']}: {who} ({err})")
@@ -462,6 +464,12 @@ def main():
                 b["followup"]["2"] = opt("--followup2")
             if opt("--cadence"):
                 b["cadence"] = [int(x) for x in opt("--cadence").split(",")]
+            if opt("--flyer"):
+                kept = lo_blasts.keep_flyer(b["slug"], os.path.expanduser(opt("--flyer")))
+                if not kept:
+                    print(f"Can't read {opt('--flyer')} (missing, or a 0-byte online-only file).")
+                    return 1
+                b["flyer"] = kept
         lo_blasts.save(b)
         print(f"{b['listing']}: saved.")
         return 0

@@ -40,12 +40,28 @@ drop it — don't raise it again next run.
 5. **The follow-up** — draft it alongside the email, one message for the whole blast, so the
    user approves both at once. Nudge 1 goes 3 business days after the original, nudge 2 at 10
    (a short "last note" is fine; leave it out and there is only one nudge). Placeholders:
-   `{first_name}` (falls back to "there"), `{tenant}`, `{listing}`. Two lines, no re-pitch —
-   it lands as a reply on the original, so the first email is right under it.
+   `{first_name}` (falls back to "there", and always "there" for shared inboxes like info@ /
+   reservations@), `{tenant}`, `{listing}`. **Write it to stand on its own**: one line that
+   names the space (size + what it is + where), one line with the ask for `{tenant}`. Never a
+   bare "just checking in" — on Apple Mail the original is NOT quoted underneath (Mail's quote
+   can't be scripted), and on a shared inbox the reader may never have seen the first email.
+   The flyer is re-attached to every nudge automatically. Example:
+   "Hi {first_name}, following up on the 4,169 SF second-generation restaurant space at
+   Cathedral Commons in upper NW DC. Still available. Any interest for {tenant}?"
 6. **Read receipts?** Ask, yes or no, per blast. Be straight about what they are: most
    recipients' mail apps ask "send a receipt?" (many say no), Gmail and Apple Mail never send
    one, so silence means nothing. On Apple Mail the switch is mailbox-wide while the blast
    sends — see Step 8.
+
+## Step 0 — Read the listing's rules file first
+
+Look for `outreach-rules.md` in the listing's own folder (next to the flyer). It holds what
+the user has already decided for this property: exclusives, category screens ("no fitness"),
+geographic disqualifiers, broker rules per category, landlord preferences, pitch points
+that go in every email, a never-contact list, VTS comment wording. **Screen against it while
+building the list, not after** — researching 20 brands and having the user cut 15 of them is
+the slowest possible loop. When the user adds or changes a rule mid-run, write it into the
+file before moving on. No file yet? Create one from what they tell you in this run.
 
 ## Step 1 — Build the target list
 
@@ -180,7 +196,13 @@ as well as a quality order:
 Rungs 1–2 come from the contact index if the user has one — `contact_index.json` and
 `resolve.py`, pointed at by `contact_index` in config. No index, start at rung 3. Either way,
 **run rungs 1–2 over the whole list before spending a single credit**, then let Lusha work the
-short list of what is left.
+short list of what is left. Say how many credits a Lusha pass will cost before running it, and
+the total spent after.
+
+**Don't trust the index's "newest" address blindly.** It orders a person's addresses by deal
+date, and a mis-dated row (a year in the future) makes an old firm's address look current —
+that sent a pitch to a broker's former employer. `vet_contacts.py` (Step 7b) flags it; when
+in doubt, check the firm's current team page.
 
 A local operator will fall to rung 4 every time, and that is correct, not a failure. Their
 contact is usually the owner behind a front-desk `info@`, which is a lower hit rate than broker
@@ -229,6 +251,19 @@ found.
 - Cap mailto links well under 2,000 chars or Excel silently truncates them. (The short email
   template keeps them ~500.)
 
+## Step 7b — Vet every address before anything opens or sends
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/vet_contacts.py" <targets.xlsx>
+```
+
+Checks each address for an MX record, against `~/.listing-outreach/people_moves.json` (who
+left a firm, who moved where, do-not-contact), and — with a contact index — for a "newest"
+date that's in the future (a mis-dated row) or more than two years old. **Exit 1 = a row is
+blocked; fix it before Step 8.** When the user corrects a contact ("she left three years
+ago", "he's at X now"), add it to `people_moves.json` on the spot — it's the only check that
+remembers. Also confirm each target is still OPEN; a closed business never goes out.
+
 ## Step 8 — Open the emails with the flyer attached
 
 `mailto:` **cannot carry an attachment** — that's the protocol. So the drafts are made directly,
@@ -266,6 +301,26 @@ from config, except on Graph, where mail comes from the mailbox that signed in (
 so if the two disagree). Signatures are whatever the client applies — Graph drafts carry none,
 so keep the sign-off in the template.
 
+### `--send`: send it now *(Apple Mail; opt-in)*
+
+Drafting stays the default. When the user has approved the list and says to send, use
+`--send` instead of opening drafts:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/make_drafts.py" <targets.xlsx> <flyer.pdf> --send   # waits 5 min for bounces
+```
+
+It sends one at a time, logs each address to `~/.listing-outreach/sends/<sheet>.json` as it
+goes (a re-run never sends twice), then **waits 5 minutes and reads the bounces from Mail**
+(`lib/lo_bounces.py`), marking each address delivered or bounced. Then Step 9 with
+`--send-log`, so VTS is written for delivered rows only. Bounces come back as a list to
+re-source — they get no VTS comment.
+
+Claude Code's auto-mode classifier blocks scripted bulk sends unless the user has allowed this
+command. If it's refused, say so plainly and give them the exact command to run — don't hunt
+for another route. The one-time fix is a Bash permission rule for `make_drafts.py`, added from
+an interactive `claude` terminal.
+
 After sending, `cleanup_drafts.py "<subject fragment>"` clears the leftovers. Graph deletes them
 server-side. Apple Mail saves any open windows first, then deletes by subject+date, and still
 throttles scripted deletes unpredictably — if it stalls, do it by hand: Drafts → search →
@@ -277,11 +332,20 @@ Every email sent becomes a deal on the listing's VTS property with a comment —
 site."** or **"Submitted potential relo opportunity."** One deal **per tenant**, not per email.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/build_vts_plan.py" <targets.xlsx> <property_id>
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/build_vts_plan.py" <targets.xlsx> <property_id> [--send-log ~/.listing-outreach/sends/<sheet>.json]
 # review ~/.listing-outreach/vts_plan.txt, then fill the dead[] and stage[] arrays in vts_plan.json
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/emit_vts_js.py" counts
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/listing-outreach/scripts/emit_vts_js.py" submitted 0 12   # paste into javascript_tool
 ```
+
+**Never log before the bounces are in.** After a `--send`, pass its log: rows that bounced or
+never went are left out of the plan. After hand-sent drafts, wait ~5 minutes and run
+`python3 "${CLAUDE_PLUGIN_ROOT}/lib/lo_bounces.py" 1 <addresses…>` first. A comment posted on a
+bounce has to be found and deleted again — the round trip this rule exists to avoid.
+
+`emit_vts_js.py` reads **every page** of the property's deals before writing and refuses to
+write on a partial read. A big property (180+ deals) spans pages; a one-page read made its
+duplicate check blind and would have created duplicates.
 
 Also log the negatives: tenants who passed get created and marked `dead_deal` with a reason id.
 That's what stops the next canvass re-pitching them.
@@ -319,14 +383,16 @@ The scheduled run (weekdays 7:00 AM) reads recent mail in both directions and, p
 confirms the original actually left (Sent folder, not draft time); logs read receipts ("Read:"
 / "Not read:" messages — never treated as replies); stops for good at any reply; and drafts the
 nudge that's due **as a reply on the original thread** — Graph via `createReply`, classic
-Outlook via `.Reply()`, Apple Mail via Mail's own `reply` (threads correctly; Mail's quoted
-original isn't scriptable, so the body is the nudge + signature and the thread carries the
-history). Nudge 2 waits until nudge 1 was actually sent. **Nothing is ever sent.** It then
+Outlook via `.Reply()`, Apple Mail via Mail's own `reply` (threads correctly, but Mail's
+quoted original isn't scriptable, so on Apple Mail the body is only the nudge + signature —
+which is why the nudge text must carry the pitch). The blast's flyer is re-attached to every
+nudge; `make_drafts.py` keeps a copy in `~/.listing-outreach/flyers/` the first time it runs. Nudge 2 waits until nudge 1 was actually sent. **Nothing is ever sent.** It then
 writes `~/.listing-outreach/followups-due.md` (and a copy at `followups.due_note` in config — a
 note the user can embed in a daily note), updates a narrow `Tracking` column on the Targets
 sheet when the workbook isn't open, and shows a notification.
 
 - Change the messages later: `followups.py set "<listing>" --followup "..." --followup2 "..."`.
+- Give an older blast its flyer: `followups.py set "<listing>" --flyer <flyer.pdf>`.
 - Stop a blast: `followups.py close "<listing>"`. Blasts close themselves once everyone has
   replied or had every nudge plus a week.
 - A blast made before v0.7.0 only has `send-manifest.json`: `followups.py import-legacy`.

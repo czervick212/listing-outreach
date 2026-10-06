@@ -19,7 +19,9 @@ Which one runs is `mail.backend` in ~/.listing-outreach/config.json when it is s
 Graph if it is configured, else the platform default.
 
 `sends` is a list of dicts: {tenant, contact, email, subject, body}.
-The compose window is opened for REVIEW — never sent automatically, on either platform.
+By default the compose window is opened for REVIEW — never sent. `send_now` is the one
+exception: an explicit `--send` from make_drafts.py, Apple Mail only, after the user has
+approved the list.
 """
 import json
 import os
@@ -57,6 +59,29 @@ end tell
 '''
     p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     return p.returncode == 0, p.stderr.strip()[:140]
+
+
+def _mac_send_one(send, flyer, sender):
+    """Send ONE message headless — the opt-in `--send` path, never the default.
+    The pause before `send` lets Mail finish attaching a large flyer; sending sooner has gone
+    out with the attachment missing."""
+    script = f'''
+set flyerAlias to (POSIX file "{flyer}") as alias
+tell application "Mail"
+  set msg to make new outgoing message with properties {{subject:{_mac_asq(send["subject"])}, content:{_mac_asbody(send["body"])} & return, visible:false}}
+  tell msg
+    set sender to "{sender}"
+    make new to recipient at end of to recipients with properties {{address:{_mac_asq(send["email"])}}}
+    tell content
+      make new attachment with properties {{file name:flyerAlias}} at after the last paragraph
+    end tell
+  end tell
+  delay 4
+  send msg
+end tell
+return "sent"'''
+    p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=180)
+    return p.returncode == 0, (p.stderr.strip() or p.stdout.strip())[:140]
 
 
 def _mac_cleanup(subject, day, account, all_dates=False):
@@ -232,18 +257,43 @@ def _graph_cleanup(subject, day, account, all_dates=False):
 # then shows the first pitch right under it. `send` is a blast-log entry (lo_blasts.py) and
 # must carry `sent_mid`, the Message-ID of the original as it left the Sent folder.
 
-def _mac_followup(send, text, sender):
-    """Mail's `reply` keeps In-Reply-To/References, so the draft threads. Two quirks, both
-    verified 2026-09-29: a scripted reply to your own sent mail is addressed to YOU (so the
-    recipient is swapped in), and Mail's quoted original is not reachable from AppleScript
-    — setting `content` drops it. The body is therefore the nudge plus the signature, and
-    the thread itself carries the history."""
+def _mac_followup(send, text, sender, flyer=None):
+    """Mail's `reply` keeps In-Reply-To/References, so the draft threads. Quirks, verified
+    2026-09-29 and 2026-10-05: a scripted reply to your own sent mail is addressed to YOU (so
+    the recipient is swapped in); Mail's quoted original is not reachable from AppleScript —
+    replacing `content` drops it, and so does inserting a paragraph above it; and the
+    signature always re-lands at the very end. So nothing of the original survives in the
+    body: the nudge has to carry the pitch itself, and the flyer is attached again."""
     mid = (send.get("sent_mid") or "").strip().strip("<>")
     if not mid:
         return False, "original not found in Sent"
+    attach = ""
+    if flyer:
+        # inside `tell r`: addressed as `content of r` from outside, Mail loses the reply
+        # ("Can't get outgoing message id N")
+        attach = f'''
+  tell r
+    tell content
+      make new attachment with properties {{file name:(POSIX file {_mac_asq(flyer)} as alias)}} at after the last paragraph
+    end tell
+  end tell'''
+    # The Sent search can outrun AppleScript's default 2-minute wait on a big mailbox.
     script = f'''
+with timeout of 600 seconds
 tell application "Mail"
   set orig to missing value
+  -- Each account's own Sent folder first: one indexed lookup (seconds). The unified
+  -- `sent mailbox` walk below is the slow fallback that was timing out.
+  repeat with acct in (every account)
+    repeat with nm in {"Sent Items", "Sent Messages", "Sent", "Sent Mail"}
+      try
+        set orig to first message of mailbox (nm as string) of acct whose message id is {_mac_asq(mid)}
+        exit repeat
+      end try
+    end repeat
+    if orig is not missing value then exit repeat
+  end repeat
+  if orig is missing value then
   repeat with mb in (every mailbox of sent mailbox)
     try
       set hits to (messages of mb whose message id is {_mac_asq(mid)})
@@ -253,6 +303,7 @@ tell application "Mail"
       end if
     end try
   end repeat
+  end if
   if orig is missing value then
     try
       set orig to first message of sent mailbox whose message id is {_mac_asq(mid)}
@@ -263,9 +314,10 @@ tell application "Mail"
   delay 1
   delete every to recipient of r
   make new to recipient at end of to recipients of r with properties {{address:{_mac_asq(send["to"])}}}
-  set content of r to {_mac_asbody(text)} & return
+  set content of r to {_mac_asbody(text)} & return{attach}
   return "ok"
-end tell'''
+end tell
+end timeout'''
     p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     out = p.stdout.strip()
     if p.returncode != 0 or out != "ok":
@@ -273,7 +325,7 @@ end tell'''
     return True, ""
 
 
-def _win_followup(send, text, sender):
+def _win_followup(send, text, sender, flyer=None):
     try:
         ol = _win_outlook()
         sent = ol.GetNamespace("MAPI").GetDefaultFolder(5)   # olFolderSentMail
@@ -299,16 +351,18 @@ def _win_followup(send, text, sender):
         r.Recipients.Add(send["to"])
         r.Recipients.ResolveAll()
         r.HTMLBody = _win_body_html(text) + (r.HTMLBody or "")
+        if flyer:
+            r.Attachments.Add(os.path.abspath(flyer))
         r.Display(False)
         return True, ""
     except Exception as e:
         return False, str(e)[:140]
 
 
-def _graph_followup(send, text, sender):
+def _graph_followup(send, text, sender, flyer=None):
     g = _graph()
     try:
-        made = g.create_followup(send.get("sent_mid") or "", send["to"], text)
+        made = g.create_followup(send.get("sent_mid") or "", send["to"], text, flyer)
         return (True, "") if made else (False, "original not found in Sent Items")
     except Exception as e:
         return False, str(e).replace("\n", " ")[:140]
@@ -378,6 +432,44 @@ def open_drafts(sends, flyer, sender, receipts=False):
     return ok, fail
 
 
+SENDERS = {"apple-mail": _mac_send_one}
+
+
+def send_now(sends, flyer, sender, log_path):
+    """Opt-in: SEND each message instead of drafting it, one at a time, flyer attached.
+
+    Every address is written to `log_path` (JSON) the moment it goes, and read back first, so a
+    crash or a re-run can never send twice — an address already marked sent is skipped. Stops at
+    the first failure rather than ploughing through a broken session. Apple Mail only for now;
+    the other backends keep the draft-and-review path. Returns (sent, skipped, failed)."""
+    import time
+    fn = SENDERS.get(backend())
+    if not fn:
+        print(f"--send isn't available on the {backend()} backend yet — drafting is.",
+              file=sys.stderr)
+        return 0, 0, len(sends)
+    log = json.load(open(log_path)) if os.path.exists(log_path) else {}
+    sent = skipped = 0
+    for s in sends:
+        key = (s["email"] or "").strip().lower()
+        if log.get(key, {}).get("sent"):
+            skipped += 1
+            print(f"  already sent  {s['tenant']} -> {s['email']}")
+            continue
+        good, err = fn(s, flyer, sender)
+        log[key] = {"tenant": s["tenant"], "contact": s.get("contact"), "sent": good,
+                    "at": time.time(), "err": "" if good else err}
+        with open(log_path, "w") as f:
+            json.dump(log, f, indent=1)
+        if not good:
+            print(f"  FAILED  {s['tenant']} ({s['email']}): {err}")
+            return sent, skipped, 1
+        sent += 1
+        print(f"  sent    {s['tenant']} -> {s['email']}")
+        time.sleep(6)
+    return sent, skipped, 0
+
+
 def cleanup_drafts(subject, day, account, all_dates=False):
     cleaner = CLEANERS.get(backend())
     if not cleaner:
@@ -386,10 +478,11 @@ def cleanup_drafts(subject, day, account, all_dates=False):
     return cleaner(subject, day, account, all_dates)
 
 
-def draft_followup(send, text, sender):
-    """Draft one nudge as a reply on the original thread. Never sends. Returns (ok, err)."""
+def draft_followup(send, text, sender, flyer=None):
+    """Draft one nudge as a reply on the original thread, flyer re-attached when given.
+    Never sends. Returns (ok, err)."""
     fn = FOLLOWERS.get(backend())
     if not fn:
         _unsupported()
         return False, "no mail backend"
-    return fn(send, text, sender)
+    return fn(send, text, sender, flyer)

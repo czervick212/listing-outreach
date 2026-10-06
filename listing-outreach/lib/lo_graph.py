@@ -355,7 +355,7 @@ def delete_message(message_id):
     api(f"/me/messages/{message_id}", "DELETE")
 
 
-def create_followup(original_mid, to, text):
+def create_followup(original_mid, to, text, attachment=None):
     """A real reply on the thread of a message we sent, addressed back to its recipient.
 
     createReply on our own sent message addresses the reply to ourselves, so the recipient
@@ -369,6 +369,15 @@ def create_followup(original_mid, to, text):
         "message": {"toRecipients": [{"emailAddress": {"address": to}}]},
         "comment": text,
     })
+    if attachment:
+        try:
+            attach(reply["id"], attachment)
+        except Exception:
+            try:
+                api(f"/me/messages/{reply['id']}", "DELETE")
+            except Exception:
+                pass
+            raise
     return {"id": reply["id"], "webLink": reply.get("webLink", "")}
 
 

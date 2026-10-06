@@ -20,6 +20,7 @@ Marketplaces → `outreach-tools` menu route still works if a user prefers it.
 
 | version | change |
 |---|---|
+| 0.8.0 | fast runs: VTS writer reads every page (was 100 deals — blind duplicate check) and no longer crashes on a stray `%`; per-listing `outreach-rules.md`; `vet_contacts.py` (MX, people moves, mis-dated index rows); opt-in `--send` with a 5-minute bounce gate; `build_vts_plan.py --send-log` logs delivered rows only; plus the shared-inbox greeting and kept-flyer fixes |
 | 0.7.0 | follow-ups + read receipts: per-listing blast logs, nudges at 3/10 business days drafted as thread replies, daily 7 AM schedule, receipts per blast (Apple Mail via a watched mailbox-wide switch) |
 | 0.6.0 | any listing type, and local operators as a list source |
 | 0.5.0 | Outlook backend over Microsoft Graph — works on New Outlook, Mac or Windows |

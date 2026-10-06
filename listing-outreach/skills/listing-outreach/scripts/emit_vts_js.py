@@ -54,11 +54,22 @@ const NOW=(()=>{                       // local wall time + the REAL utc offset.
   // clock as Eastern, pushing anything written after noon ET onto the NEXT calendar day.
   const d=new Date(), o=-d.getTimezoneOffset(), s=o>=0?'+':'-', a=Math.abs(o);
   return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().replace(/\\.\\d+Z$/,'')
-    +s+String(Math.floor(a/60)).padStart(2,'0')+':'+String(a%60).padStart(2,'0');})();
+    +s+String(Math.floor(a/60)).padStart(2,'0')+':'+String(a%%60).padStart(2,'0');})();
 const norm=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const sleep=ms=>new Promise(s=>setTimeout(s,ms));
-async function DEALS(){const u=`/api/horse/deals?activity_report_filter[properties][]=${P}&activity_report_filter[page]=1&activity_report_filter[page_size]=100&properties[]=${P}&page=1&page_size=100`;
-  return ((await (await fetch(u,{headers:RO,credentials:'same-origin'})).json()).activity_logs||[]);}
+// Every page, or nothing. The endpoint silently returns ONE page: reading only page 1 (100
+// deals) left the duplicate check blind on big properties -- Cathedral Commons has 180 --
+// and the writer would happily create a second copy of a deal on page 2. Fail closed.
+async function DEALS(){const seen=new Map(); let page=1, pages=1, total=null;
+  do{const u=`/api/horse/deals?activity_report_filter[properties][]=${P}&activity_report_filter[page]=${page}&activity_report_filter[page_size]=200&properties[]=${P}&page=${page}&page_size=200`;
+    const r=await fetch(u,{headers:RO,credentials:'same-origin'});
+    if(!r.ok) throw new Error('deal list GET '+r.status+' (page '+page+') - signed out of VTS?');
+    const j=await r.json(); (j.activity_logs||[]).forEach(x=>seen.set(x.id,x));
+    pages=j.total_pages||1; total=j.total_count; page++;
+  }while(page<=pages);
+  if(total!=null && seen.size!==total)
+    throw new Error('deal list incomplete: read '+seen.size+' of '+total+' - nothing written, run it again');
+  return [...seen.values()];}
 async function latestIter(id){
   const a=await (await fetch(`/api/horse/deal_artifacts?activity_log_ids[]=${id}`,{headers:RO,credentials:'same-origin'})).json();
   const it=(a||[]).filter(x=>x.class_name==='ActivityLogIteration').map(x=>x.id);
@@ -98,7 +109,7 @@ const out=[];
 
 
 def emit(rows, kind):
-    body = ["let d=await DEALS(); const have=new Set(d.map(x=>norm(x.deal_name)));",
+    body = ["let d=await DEALS(); const have=new Set(d.map(x=>norm(x.deal_name||x.tenant_company)));",
             "const ROWS=" + json.dumps(rows, ensure_ascii=False) + ";"]
     if kind in ("submitted", "dead"):
         body.append("""
@@ -109,7 +120,7 @@ for(const x of ROWS){
   if(st>=200&&st<300) made.push(x); else out.push(`FAIL ${st} ${x.tenant}`);
   await sleep(320);
 }
-d=await DEALS(); const byNorm={}; for(const z of d) byNorm[norm(z.deal_name)]=z.id;
+d=await DEALS(); const byNorm={}; for(const z of d) byNorm[norm(z.deal_name||z.tenant_company)]=z.id;
 for(const x of made){
   const id=byNorm[norm(x.tenant)];
   if(!id){ out.push(`NOID ${x.tenant}`); continue; }
@@ -120,7 +131,7 @@ for(const x of made){
 }""")
     elif kind == "stage":
         body.append("""
-d=await DEALS(); const byNorm={}; for(const z of d) byNorm[norm(z.deal_name)]=z.id;
+d=await DEALS(); const byNorm={}; for(const z of d) byNorm[norm(z.deal_name||z.tenant_company)]=z.id;
 for(const x of ROWS){
   const id=byNorm[norm(x.tenant)];
   if(!id){ out.push(`NOID ${x.tenant}`); continue; }
